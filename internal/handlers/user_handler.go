@@ -1,23 +1,25 @@
 package handlers
 
 import (
+	"go-starter/internal/common"
 	"go-starter/internal/repository"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func GetUserHandler(conn *pgx.Conn) gin.HandlerFunc {
+func GetUserHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		userId := c.GetInt("user_id")
 
-		userData, err := repository.GetUserById(ctx, conn, userId)
+		userData, err := repository.GetUserById(ctx, pool, userId)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Error while get user data: " + err.Error()})
+			common.SendFailResponse(c, http.StatusUnauthorized, "Error while get user data: "+err.Error())
+			return
 		}
 
-		c.JSON(http.StatusOK, userData)
+		common.SendSuccessResponse(c, http.StatusOK, userData)
 	}
 }

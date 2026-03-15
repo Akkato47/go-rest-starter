@@ -1,18 +1,26 @@
 package main
 
 import (
+	"fmt"
 	"go-starter/internal/config"
 	"go-starter/internal/handlers"
 	"go-starter/internal/middleware"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
-func SecurityHeaders() gin.HandlerFunc {
+const (
+	_rateLimitWindow  = time.Minute
+	_rateLimitMaxReqs = 10
+)
+
+func SetupSecurityHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("X-Content-Type-Options", "nosniff")
@@ -24,9 +32,9 @@ func SecurityHeaders() gin.HandlerFunc {
 	}
 }
 
-func Cors(cfg *config.Config) gin.HandlerFunc {
+func SetupCors(cfg *config.Config) gin.HandlerFunc {
 	return cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
+		AllowOrigins:     cfg.AllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
 		AllowHeaders:     []string{"Origin", "Content-Type"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -35,12 +43,65 @@ func Cors(cfg *config.Config) gin.HandlerFunc {
 	})
 }
 
-func SetupHandlers(cfg *config.Config, conn *pgx.Conn) *gin.Engine {
-	router := gin.Default()
-	gin.SetMode(gin.ReleaseMode)
+func SetupRateLimiter(rdb *redis.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		key := fmt.Sprintf("rate_limit:%s", c.ClientIP())
 
-	router.Use(Cors(cfg))
-	router.Use(SecurityHeaders())
+		pipe := rdb.Pipeline()
+		incr := pipe.Incr(ctx, key)
+		pipe.Expire(ctx, key, _rateLimitWindow)
+
+		if _, err := pipe.Exec(ctx); err != nil {
+			c.Next()
+			return
+		}
+
+		if incr.Val() > _rateLimitMaxReqs {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"error": "rate limit exceeded",
+			})
+			return
+		}
+
+		c.Next()
+	}
+}
+
+func SetupSlogMiddleware(logger *slog.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		path := c.Request.URL.Path
+		query := c.Request.URL.RawQuery
+
+		c.Next()
+
+		logger.Info("request",
+			slog.String("method", c.Request.Method),
+			slog.String("path", path),
+			slog.String("query", query),
+			slog.Int("status", c.Writer.Status()),
+			slog.Duration("latency", time.Since(start)),
+			slog.String("client_ip", c.ClientIP()),
+			slog.Int("body_size", c.Writer.Size()),
+		)
+
+		if len(c.Errors) > 0 {
+			for _, err := range c.Errors {
+				logger.Error("request error", slog.String("error", err.Error()))
+			}
+		}
+	}
+}
+
+func SetupHandlers(cfg *config.Config, pool *pgxpool.Pool, redisClient *redis.Client, logger *slog.Logger) *gin.Engine {
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+
+	router.Use(gin.Recovery())
+	router.Use(SetupSlogMiddleware(logger))
+	router.Use(SetupCors(cfg))
+	router.Use(SetupSecurityHeaders())
 	router.SetTrustedProxies(nil)
 
 	router.Use(func(c *gin.Context) {
@@ -63,22 +124,15 @@ func SetupHandlers(cfg *config.Config, conn *pgx.Conn) *gin.Engine {
 		})
 	})
 
-	router.GET("/test-grace", func(c *gin.Context) {
-		select {
-		case <-time.After(5 * time.Second):
-			c.String(http.StatusOK, "Hello, world!")
-		case <-c.Request.Context().Done():
-			c.String(http.StatusRequestTimeout, "Request cancelled")
-		}
-	})
-
-	router.POST("/auth/register", handlers.RegisterHandler(conn, cfg))
-	router.POST("/auth/login", handlers.LoginHandler(conn, cfg))
+	authRouter := router.Group("/auth")
+	authRouter.Use(SetupRateLimiter(redisClient))
+	authRouter.POST("/register", handlers.RegisterHandler(pool, cfg))
+	authRouter.POST("/login", handlers.LoginHandler(pool, cfg))
 
 	protectedUserRouter := router.Group("/user")
 	protectedUserRouter.Use(middleware.AuthMiddleware(cfg))
 
-	protectedUserRouter.GET("/data", handlers.GetUserHandler(conn))
+	protectedUserRouter.GET("/data", handlers.GetUserHandler(pool))
 
 	return router
 }

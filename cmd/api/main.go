@@ -31,18 +31,24 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	conn, err := database.Connect(rootCtx, cfg)
+	pool, err := database.Connect(rootCtx, cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer conn.Close(rootCtx)
+	defer pool.Close()
 
-	router := SetupHandlers(cfg, conn)
+	redisClient, err := database.CreateRedisClient(cfg.RedisUrl)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer redisClient.Close()
+
+	handlers := SetupHandlers(cfg, pool, redisClient, logger)
 
 	ongoingCtx, stopOngoingGracefully := context.WithCancel(context.Background())
 	srv := &http.Server{
 		Addr:         ":" + cfg.AppPort,
-		Handler:      router,
+		Handler:      handlers,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,

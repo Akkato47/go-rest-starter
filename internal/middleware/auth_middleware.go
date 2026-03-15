@@ -69,7 +69,6 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 				return
 			}
 		}
-		fmt.Println(userID)
 
 		c.Set("user_id", userID)
 		c.Next()

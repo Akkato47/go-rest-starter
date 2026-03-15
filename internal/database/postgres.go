@@ -4,25 +4,25 @@ import (
 	"context"
 	"fmt"
 	"go-starter/internal/config"
-	"log"
+	"log/slog"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func Connect(ctx context.Context, config *config.Config) (*pgx.Conn, error) {
-	conn, err := pgx.Connect(ctx, fmt.Sprintf("host=%v port=%v user=%v password=%v dbname=%v sslmode=%v", config.DbHost, config.DbPort, config.DbUser, config.DbPassword, config.DbName, config.DbSslMode))
+func Connect(ctx context.Context, config *config.Config) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(ctx, fmt.Sprintf("host=%v port=%v user=%v password=%v dbname=%v sslmode=%v", config.DbHost, config.DbPort, config.DbUser, config.DbPassword, config.DbName, config.DbSslMode))
 	if err != nil {
-		log.Printf("Unable to create conn: %v", err)
+		slog.Error(fmt.Sprintf("Unable to create conn: %v", err))
 		return nil, err
 	}
 
-	err = conn.Ping(ctx)
+	err = pool.Ping(ctx)
 	if err != nil {
-		log.Printf("Unable to ping database: %v", err)
-		conn.Close(ctx)
+		slog.Error(fmt.Sprintf("Unable to ping database: %v", err))
+		pool.Close()
 		return nil, err
 	}
 
-	log.Println("Succefuly connected to PSQL db")
-	return conn, nil
+	slog.Info("Successfully connected to PSQL db")
+	return pool, nil
 }

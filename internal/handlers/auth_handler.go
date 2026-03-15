@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"go-starter/internal/common"
 	"go-starter/internal/config"
 	"go-starter/internal/model"
 	"go-starter/internal/repository"
@@ -10,37 +11,37 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type RegisterRequest struct {
-	Mail     string `json:"mail" binding:"required"`
+	Mail     string `json:"mail" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
 }
 
 type LoginRequest struct {
-	Mail     string `json:"mail" binding:"required"`
+	Mail     string `json:"mail" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
 }
 
-func RegisterHandler(conn *pgx.Conn, cfg *config.Config) gin.HandlerFunc {
+func RegisterHandler(pool *pgxpool.Pool, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		var registerRequest RegisterRequest
 
 		if err := c.BindJSON(&registerRequest); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "jsonReq" + err.Error()})
+			common.SendFailResponse(c, http.StatusBadRequest, "jsonReq"+err.Error())
 			return
 		}
 
 		if len(registerRequest.Password) < 6 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 6 characters long"})
+			common.SendFailResponse(c, http.StatusBadRequest, "Password must be at least 6 characters long")
 			return
 		}
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(registerRequest.Password), bcrypt.DefaultCost)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to hash password " + err.Error()})
+			common.SendFailResponse(c, http.StatusBadRequest, "Failed to hash password "+err.Error())
 			return
 		}
 
@@ -49,13 +50,13 @@ func RegisterHandler(conn *pgx.Conn, cfg *config.Config) gin.HandlerFunc {
 			Password: string(hashedPassword),
 		}
 
-		createdUser, err := repository.CreateUser(ctx, conn, user)
+		createdUser, err := repository.CreateUser(ctx, pool, user)
 		if err != nil {
 			if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Mail already registred"})
+				common.SendFailResponse(c, http.StatusBadRequest, "Mail already registered")
 				return
 			}
-			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to create user " + err.Error()})
+			common.SendFailResponse(c, http.StatusBadRequest, "failed to create user "+err.Error())
 			return
 		}
 
@@ -63,7 +64,7 @@ func RegisterHandler(conn *pgx.Conn, cfg *config.Config) gin.HandlerFunc {
 
 		accessTokenString, err := generateJWT(createdUser.ID, tokenExp, cfg)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token: " + err.Error()})
+			common.SendFailResponse(c, http.StatusInternalServerError, "Failed to generate token: "+err.Error())
 			return
 		}
 
@@ -71,29 +72,31 @@ func RegisterHandler(conn *pgx.Conn, cfg *config.Config) gin.HandlerFunc {
 			Name:     "access_token",
 			Value:    accessTokenString,
 			HttpOnly: true, Expires: tokenExp,
+			Secure:   cfg.ProductionStatus,
+			SameSite: http.SameSiteLaxMode,
 		})
-		c.JSON(http.StatusCreated, createdUser)
+		common.SendSuccessResponse(c, http.StatusCreated, createdUser)
 	}
 }
 
-func LoginHandler(conn *pgx.Conn, cfg *config.Config) gin.HandlerFunc {
+func LoginHandler(pool *pgxpool.Pool, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var loginRequest LoginRequest
 		ctx := c.Request.Context()
 
 		if err := c.BindJSON(&loginRequest); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "jsonReq" + err.Error()})
+			common.SendFailResponse(c, http.StatusBadRequest, "jsonReq"+err.Error())
 			return
 		}
 
-		user, err := repository.GetuserByMail(ctx, conn, loginRequest.Mail)
+		user, err := repository.GetUserByMail(ctx, pool, loginRequest.Mail)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+			common.SendFailResponse(c, http.StatusUnauthorized, "Something went wrong: "+err.Error())
 			return
 		}
 		err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(loginRequest.Password))
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+			common.SendFailResponse(c, http.StatusUnauthorized, "Invalid credentials")
 			return
 		}
 
@@ -101,7 +104,7 @@ func LoginHandler(conn *pgx.Conn, cfg *config.Config) gin.HandlerFunc {
 
 		accessTokenString, err := generateJWT(user.ID, tokenExp, cfg)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token: " + err.Error()})
+			common.SendFailResponse(c, http.StatusInternalServerError, "Failed to generate token: "+err.Error())
 			return
 		}
 
@@ -109,8 +112,10 @@ func LoginHandler(conn *pgx.Conn, cfg *config.Config) gin.HandlerFunc {
 			Name:     "access_token",
 			Value:    accessTokenString,
 			HttpOnly: true, Expires: tokenExp,
+			Secure:   cfg.ProductionStatus,
+			SameSite: http.SameSiteLaxMode,
 		})
-		c.JSON(http.StatusOK, user)
+		common.SendSuccessResponse(c, http.StatusOK, user)
 	}
 }
 

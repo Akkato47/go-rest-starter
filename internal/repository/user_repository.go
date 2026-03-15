@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"go-starter/internal/model"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func CreateUser(ctx context.Context, conn *pgx.Conn, user *model.User) (*model.User, error) {
+func CreateUser(ctx context.Context, pool *pgxpool.Pool, user *model.User) (*model.User, error) {
 	if user.Mail == "" {
-		return nil, fmt.Errorf("email не может быть пустым")
+		return nil, fmt.Errorf("mail can not be empty")
 	}
 
 	query := `
@@ -22,7 +22,7 @@ func CreateUser(ctx context.Context, conn *pgx.Conn, user *model.User) (*model.U
 
 	var createdUser model.User
 
-	err := conn.QueryRow(ctx, query, user.Mail, user.Password).Scan(
+	err := pool.QueryRow(ctx, query, user.Mail, user.Password).Scan(
 		&createdUser.ID,
 		&createdUser.Mail,
 		&createdUser.CreatedAt,
@@ -44,7 +44,7 @@ func CreateUser(ctx context.Context, conn *pgx.Conn, user *model.User) (*model.U
 	return &createdUser, nil
 }
 
-func GetuserByMail(ctx context.Context, conn *pgx.Conn, mail string) (*model.User, error) {
+func GetUserByMail(ctx context.Context, pool *pgxpool.Pool, mail string) (*model.User, error) {
 	query := `
 		SELECT id, mail, password
 		FROM users
@@ -53,7 +53,7 @@ func GetuserByMail(ctx context.Context, conn *pgx.Conn, mail string) (*model.Use
 
 	var user model.User
 
-	err := conn.QueryRow(ctx, query, mail).Scan(
+	err := pool.QueryRow(ctx, query, mail).Scan(
 		&user.ID,
 		&user.Mail,
 		&user.Password,
@@ -64,7 +64,7 @@ func GetuserByMail(ctx context.Context, conn *pgx.Conn, mail string) (*model.Use
 	return &user, nil
 }
 
-func GetUserById(ctx context.Context, conn *pgx.Conn, id int) (*model.User, error) {
+func GetUserById(ctx context.Context, pool *pgxpool.Pool, id int) (*model.User, error) {
 	query := `
 		SELECT id, mail, created_at
 		FROM users
@@ -73,7 +73,7 @@ func GetUserById(ctx context.Context, conn *pgx.Conn, id int) (*model.User, erro
 
 	var user model.User
 
-	err := conn.QueryRow(ctx, query, id).Scan(
+	err := pool.QueryRow(ctx, query, id).Scan(
 		&user.ID,
 		&user.Mail,
 		&user.CreatedAt,
