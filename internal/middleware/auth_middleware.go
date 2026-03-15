@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go-starter/internal/config"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -39,15 +40,22 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token Claims"})
+		if !ok || !token.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token claims"})
 			c.Abort()
 			return
 		}
 
-		userID, ok := claims["user_id"].(string)
+		userIDString, ok := claims["user_id"].(string)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token Claims"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user_id in token"})
+			c.Abort()
+			return
+		}
+
+		userID, err := strconv.Atoi(userIDString)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Error while converting user id"})
 			c.Abort()
 			return
 		}
@@ -61,6 +69,7 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 				return
 			}
 		}
+		fmt.Println(userID)
 
 		c.Set("user_id", userID)
 		c.Next()

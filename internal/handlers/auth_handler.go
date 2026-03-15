@@ -26,6 +26,7 @@ type LoginRequest struct {
 
 func RegisterHandler(conn *pgx.Conn, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		var registerRequest RegisterRequest
 
 		if err := c.BindJSON(&registerRequest); err != nil {
@@ -48,7 +49,7 @@ func RegisterHandler(conn *pgx.Conn, cfg *config.Config) gin.HandlerFunc {
 			Password: string(hashedPassword),
 		}
 
-		createdUser, err := repository.CreateUser(conn, user)
+		createdUser, err := repository.CreateUser(ctx, conn, user)
 		if err != nil {
 			if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Mail already registred"})
@@ -60,13 +61,7 @@ func RegisterHandler(conn *pgx.Conn, cfg *config.Config) gin.HandlerFunc {
 
 		tokenExp := time.Now().Add(1 * time.Hour)
 
-		claims := jwt.MapClaims{
-			"user_id": createdUser.ID,
-			"exp":     tokenExp.Unix(),
-		}
-
-		accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-		accessTokenString, err := accessToken.SignedString([]byte(cfg.JwtSecret))
+		accessTokenString, err := generateJWT(createdUser.ID, tokenExp, cfg)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token: " + err.Error()})
 			return
@@ -84,13 +79,14 @@ func RegisterHandler(conn *pgx.Conn, cfg *config.Config) gin.HandlerFunc {
 func LoginHandler(conn *pgx.Conn, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var loginRequest LoginRequest
+		ctx := c.Request.Context()
 
 		if err := c.BindJSON(&loginRequest); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "jsonReq" + err.Error()})
 			return
 		}
 
-		user, err := repository.GetuserByMail(conn, loginRequest.Mail)
+		user, err := repository.GetuserByMail(ctx, conn, loginRequest.Mail)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 			return
@@ -103,13 +99,7 @@ func LoginHandler(conn *pgx.Conn, cfg *config.Config) gin.HandlerFunc {
 
 		tokenExp := time.Now().Add(1 * time.Hour)
 
-		claims := jwt.MapClaims{
-			"user_id": user.ID,
-			"exp":     tokenExp.Unix(),
-		}
-
-		accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-		accessTokenString, err := accessToken.SignedString([]byte(cfg.JwtSecret))
+		accessTokenString, err := generateJWT(user.ID, tokenExp, cfg)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token: " + err.Error()})
 			return
@@ -122,4 +112,15 @@ func LoginHandler(conn *pgx.Conn, cfg *config.Config) gin.HandlerFunc {
 		})
 		c.JSON(http.StatusOK, user)
 	}
+}
+
+func generateJWT(userId string, expTime time.Time, cfg *config.Config) (string, error) {
+	claims := jwt.MapClaims{
+		"user_id": userId,
+		"exp":     expTime.Unix(),
+	}
+
+	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	return accessToken.SignedString([]byte(cfg.JwtSecret))
 }

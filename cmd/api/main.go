@@ -4,37 +4,78 @@ import (
 	"context"
 	"go-starter/internal/config"
 	"go-starter/internal/database"
-	"go-starter/internal/handlers"
-	"go-starter/internal/middleware"
 	"log"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
-
-	"github.com/gin-gonic/gin"
+	"os/signal"
+	"sync/atomic"
+	"syscall"
+	"time"
 )
 
+const (
+	_shutdownPeriod      = 15 * time.Second
+	_shutdownHardPeriod  = 3 * time.Second
+	_readinessDrainDelay = 5 * time.Second
+)
+
+var isShuttingDown atomic.Bool
+
 func main() {
-	ctx := context.Background()
+	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
 
 	cfg := config.NewConfig()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	conn, err := database.Connect(ctx, cfg.DbUrl)
+	conn, err := database.Connect(rootCtx, cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer conn.Close(ctx)
+	defer conn.Close(rootCtx)
 
-	router := gin.Default()
-	router.SetTrustedProxies(nil)
+	router := SetupHandlers(cfg, conn)
 
-	router.POST("/auth/register", handlers.RegisterHandler(conn, cfg))
-	router.POST("/auth/login", handlers.LoginHandler(conn, cfg))
+	ongoingCtx, stopOngoingGracefully := context.WithCancel(context.Background())
+	srv := &http.Server{
+		Addr:         ":" + cfg.AppPort,
+		Handler:      router,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+		BaseContext: func(_ net.Listener) context.Context {
+			return ongoingCtx
+		},
+	}
 
-	protected := router.Group("/protected")
-	protected.Use(middleware.AuthMiddleware(cfg))
+	go func() {
+		logger.Info("Starting server")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			panic(err)
+		}
+	}()
 
-	logger.Info("Starting server")
-	router.Run(":" + cfg.AppPort)
+	<-rootCtx.Done()
+	stop()
+	isShuttingDown.Store(true)
+	srv.SetKeepAlivesEnabled(false)
+	logger.Info("Received shutdown signal, gracefully shutting down...")
+
+	time.Sleep(_readinessDrainDelay)
+	logger.Info("Readiness check propagated, now waiting for ongoing request to finish...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), _shutdownPeriod)
+	defer cancel()
+
+	err = srv.Shutdown(shutdownCtx)
+	stopOngoingGracefully()
+	if err != nil {
+		logger.Error("Failed to wait for ongoing requests to finish, waiting for forced cancellation...")
+		time.Sleep(_shutdownHardPeriod)
+	}
+	logger.Info("Server shut down gracefully")
+
 }

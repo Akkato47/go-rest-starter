@@ -1,19 +1,37 @@
 package config
 
-import "go-starter/internal/env"
+import (
+	"go-starter/internal/env"
+)
 
 type Config struct {
-	DbUrl    string
-	RedisUrl string
-	AppPort  string
-	JwtSecret string
+	DbUrl      string
+	DbHost     string
+	DbPort     string
+	DbUser     string
+	DbPassword string
+	DbName     string
+	DbSslMode  string
+	RedisUrl   string
+	AppPort    string
+	AppURL     string
+	JwtSecret  string
+	CsrfSecret string
 }
 
 func NewConfig() *Config {
 	return &Config{
-		DbUrl: env.GetString("POSTGRES_URL", ""),
-		RedisUrl: env.GetString("REDIS_URL", ""),
-		AppPort: env.GetString("PORT", ""),
-		JwtSecret: env.GetString("JWT_SECRET", ""),
+		DbUrl:      env.GetString("POSTGRES_URL", ""),
+		DbHost:     env.GetString("POSTGRES_HOST", ""),
+		DbPort:     env.GetString("POSTGRES_PORT", ""),
+		DbUser:     env.GetString("POSTGRES_USER", ""),
+		DbPassword: env.GetString("POSTGRES_PASSWORD", ""),
+		DbName:     env.GetString("POSTGRES_NAME", ""),
+		DbSslMode:  env.GetString("POSTGRES_SSL_MODE", ""),
+		RedisUrl:   env.GetString("REDIS_URL", ""),
+		AppPort:    env.GetString("APP_PORT", ""),
+		AppURL:     env.GetString("APP_URL", ""),
+		JwtSecret:  env.GetString("JWT_SECRET", ""),
+		CsrfSecret: env.GetString("CSRF_SECRET", ""),
 	}
 }

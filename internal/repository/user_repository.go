@@ -4,17 +4,12 @@ import (
 	"context"
 	"fmt"
 	"go-starter/internal/model"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-func CreateUser(conn *pgx.Conn, user *model.User) (*model.User, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
-	// Проверка обязательных полей
+func CreateUser(ctx context.Context, conn *pgx.Conn, user *model.User) (*model.User, error) {
 	if user.Mail == "" {
 		return nil, fmt.Errorf("email не может быть пустым")
 	}
@@ -37,24 +32,21 @@ func CreateUser(conn *pgx.Conn, user *model.User) (*model.User, error) {
 	if err != nil {
 		if pgErr, ok := err.(*pgconn.PgError); ok {
 			switch pgErr.Code {
-			case "23505": // unique_violation
-				return nil, fmt.Errorf("пользователь с таким email уже существует")
+			case "23505":
+				return nil, fmt.Errorf("user with such mail already exists")
 			default:
-				return nil, fmt.Errorf("ошибка базы данных: %s", pgErr.Message)
+				return nil, fmt.Errorf("database error: %s", pgErr.Message)
 			}
 		}
-		return nil, fmt.Errorf("не удалось создать пользователя: %w", err)
+		return nil, fmt.Errorf("error while creating user: %w", err)
 	}
 
 	return &createdUser, nil
 }
 
-func GetuserByMail(conn *pgx.Conn, mail string) (*model.User, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
+func GetuserByMail(ctx context.Context, conn *pgx.Conn, mail string) (*model.User, error) {
 	query := `
-		SELECT id, mail
+		SELECT id, mail, password
 		FROM users
 		WHERE mail = $1
 	`
@@ -64,6 +56,7 @@ func GetuserByMail(conn *pgx.Conn, mail string) (*model.User, error) {
 	err := conn.QueryRow(ctx, query, mail).Scan(
 		&user.ID,
 		&user.Mail,
+		&user.Password,
 	)
 	if err != nil {
 		return &model.User{}, err
@@ -71,12 +64,9 @@ func GetuserByMail(conn *pgx.Conn, mail string) (*model.User, error) {
 	return &user, nil
 }
 
-func GetUserById(conn *pgx.Conn, id string) (*model.User, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
+func GetUserById(ctx context.Context, conn *pgx.Conn, id int) (*model.User, error) {
 	query := `
-		SELECT id, mail
+		SELECT id, mail, created_at
 		FROM users
 		WHERE id = $1
 	`
@@ -86,6 +76,7 @@ func GetUserById(conn *pgx.Conn, id string) (*model.User, error) {
 	err := conn.QueryRow(ctx, query, id).Scan(
 		&user.ID,
 		&user.Mail,
+		&user.CreatedAt,
 	)
 	if err != nil {
 		return &model.User{}, err
