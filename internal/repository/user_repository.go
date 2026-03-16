@@ -9,7 +9,23 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func CreateUser(ctx context.Context, pool *pgxpool.Pool, user *model.User) (*model.User, error) {
+type UserRepository interface {
+	CreateUser(ctx context.Context, user *model.User) (*model.User, error)
+	GetUserByMail(ctx context.Context, mail string) (*model.User, error)
+	GetUserById(ctx context.Context, id int) (*model.User, error)
+}
+
+type userRepo struct {
+	pool *pgxpool.Pool
+}
+
+func NewUserRepository(pool *pgxpool.Pool) UserRepository {
+	return &userRepo{
+		pool: pool,
+	}
+}
+
+func (r *userRepo) CreateUser(ctx context.Context, user *model.User) (*model.User, error) {
 	if user.Mail == "" {
 		return nil, fmt.Errorf("mail can not be empty")
 	}
@@ -22,7 +38,7 @@ func CreateUser(ctx context.Context, pool *pgxpool.Pool, user *model.User) (*mod
 
 	var createdUser model.User
 
-	err := pool.QueryRow(ctx, query, user.Mail, user.Password).Scan(
+	err := r.pool.QueryRow(ctx, query, user.Mail, user.Password).Scan(
 		&createdUser.ID,
 		&createdUser.Mail,
 		&createdUser.CreatedAt,
@@ -44,7 +60,7 @@ func CreateUser(ctx context.Context, pool *pgxpool.Pool, user *model.User) (*mod
 	return &createdUser, nil
 }
 
-func GetUserByMail(ctx context.Context, pool *pgxpool.Pool, mail string) (*model.User, error) {
+func (r *userRepo) GetUserByMail(ctx context.Context, mail string) (*model.User, error) {
 	query := `
 		SELECT id, mail, password
 		FROM users
@@ -53,18 +69,18 @@ func GetUserByMail(ctx context.Context, pool *pgxpool.Pool, mail string) (*model
 
 	var user model.User
 
-	err := pool.QueryRow(ctx, query, mail).Scan(
+	err := r.pool.QueryRow(ctx, query, mail).Scan(
 		&user.ID,
 		&user.Mail,
 		&user.Password,
 	)
 	if err != nil {
-		return &model.User{}, err
+		return nil, err
 	}
 	return &user, nil
 }
 
-func GetUserById(ctx context.Context, pool *pgxpool.Pool, id int) (*model.User, error) {
+func (r *userRepo) GetUserById(ctx context.Context, id int) (*model.User, error) {
 	query := `
 		SELECT id, mail, created_at
 		FROM users
@@ -73,13 +89,13 @@ func GetUserById(ctx context.Context, pool *pgxpool.Pool, id int) (*model.User, 
 
 	var user model.User
 
-	err := pool.QueryRow(ctx, query, id).Scan(
+	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&user.ID,
 		&user.Mail,
 		&user.CreatedAt,
 	)
 	if err != nil {
-		return &model.User{}, err
+		return nil, err
 	}
 	return &user, nil
 }

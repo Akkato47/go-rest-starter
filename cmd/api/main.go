@@ -4,6 +4,9 @@ import (
 	"context"
 	"go-starter/internal/config"
 	"go-starter/internal/database"
+	"go-starter/internal/handlers"
+	"go-starter/internal/repository"
+	"go-starter/internal/services"
 	"log"
 	"log/slog"
 	"net"
@@ -43,7 +46,15 @@ func main() {
 	}
 	defer redisClient.Close()
 
-	handlers := SetupHandlers(cfg, pool, redisClient, logger)
+	userRepo := repository.NewUserRepository(pool)
+
+	authService := services.NewAuthService(userRepo, cfg)
+	userService := services.NewUserService(userRepo)
+	
+	authHandlers := handlers.NewAuthHandler(authService, cfg)
+	userHandlers := handlers.NewUserHandler(userService)
+
+	handlers := SetupRouter(cfg, pool, redisClient, logger, authHandlers, userHandlers)
 
 	ongoingCtx, stopOngoingGracefully := context.WithCancel(context.Background())
 	srv := &http.Server{

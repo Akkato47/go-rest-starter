@@ -94,7 +94,9 @@ func SetupSlogMiddleware(logger *slog.Logger) gin.HandlerFunc {
 	}
 }
 
-func SetupHandlers(cfg *config.Config, pool *pgxpool.Pool, redisClient *redis.Client, logger *slog.Logger) *gin.Engine {
+func SetupRouter(
+	cfg *config.Config, pool *pgxpool.Pool, redisClient *redis.Client, logger *slog.Logger, authH handlers.AuthHandler, userH handlers.UserHandler) *gin.Engine {
+
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 
@@ -126,13 +128,13 @@ func SetupHandlers(cfg *config.Config, pool *pgxpool.Pool, redisClient *redis.Cl
 
 	authRouter := router.Group("/auth")
 	authRouter.Use(SetupRateLimiter(redisClient))
-	authRouter.POST("/register", handlers.RegisterHandler(pool, cfg))
-	authRouter.POST("/login", handlers.LoginHandler(pool, cfg))
+	authRouter.POST("/register", authH.RegisterHandler())
+	authRouter.POST("/login", authH.LoginHandler())
 
 	protectedUserRouter := router.Group("/user")
 	protectedUserRouter.Use(middleware.AuthMiddleware(cfg))
 
-	protectedUserRouter.GET("/data", handlers.GetUserHandler(pool))
+	protectedUserRouter.GET("/data", userH.GetUserHandler())
 
 	return router
 }
