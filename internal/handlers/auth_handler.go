@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"go-starter/internal/common"
+	"go-starter/internal/common/response"
 	"go-starter/internal/config"
 	"go-starter/internal/model"
 	"go-starter/internal/repository"
@@ -31,17 +31,17 @@ func RegisterHandler(pool *pgxpool.Pool, cfg *config.Config) gin.HandlerFunc {
 		var registerRequest RegisterRequest
 
 		if err := c.BindJSON(&registerRequest); err != nil {
-			common.SendFailResponse(c, http.StatusBadRequest, "jsonReq"+err.Error())
+			response.SendFailResponse(c, http.StatusBadRequest, "jsonReq"+err.Error())
 			return
 		}
 
 		if len(registerRequest.Password) < 6 {
-			common.SendFailResponse(c, http.StatusBadRequest, "Password must be at least 6 characters long")
+			response.SendFailResponse(c, http.StatusBadRequest, "Password must be at least 6 characters long")
 			return
 		}
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(registerRequest.Password), bcrypt.DefaultCost)
 		if err != nil {
-			common.SendFailResponse(c, http.StatusBadRequest, "Failed to hash password "+err.Error())
+			response.SendFailResponse(c, http.StatusBadRequest, "Failed to hash password "+err.Error())
 			return
 		}
 
@@ -53,10 +53,10 @@ func RegisterHandler(pool *pgxpool.Pool, cfg *config.Config) gin.HandlerFunc {
 		createdUser, err := repository.CreateUser(ctx, pool, user)
 		if err != nil {
 			if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
-				common.SendFailResponse(c, http.StatusBadRequest, "Mail already registered")
+				response.SendFailResponse(c, http.StatusBadRequest, "Mail already registered")
 				return
 			}
-			common.SendFailResponse(c, http.StatusBadRequest, "failed to create user "+err.Error())
+			response.SendFailResponse(c, http.StatusBadRequest, "failed to create user "+err.Error())
 			return
 		}
 
@@ -64,7 +64,7 @@ func RegisterHandler(pool *pgxpool.Pool, cfg *config.Config) gin.HandlerFunc {
 
 		accessTokenString, err := generateJWT(createdUser.ID, tokenExp, cfg)
 		if err != nil {
-			common.SendFailResponse(c, http.StatusInternalServerError, "Failed to generate token: "+err.Error())
+			response.SendFailResponse(c, http.StatusInternalServerError, "Failed to generate token: "+err.Error())
 			return
 		}
 
@@ -75,7 +75,7 @@ func RegisterHandler(pool *pgxpool.Pool, cfg *config.Config) gin.HandlerFunc {
 			Secure:   cfg.ProductionStatus,
 			SameSite: http.SameSiteLaxMode,
 		})
-		common.SendSuccessResponse(c, http.StatusCreated, createdUser)
+		response.SendSuccessResponse(c, http.StatusCreated, createdUser)
 	}
 }
 
@@ -85,18 +85,18 @@ func LoginHandler(pool *pgxpool.Pool, cfg *config.Config) gin.HandlerFunc {
 		ctx := c.Request.Context()
 
 		if err := c.BindJSON(&loginRequest); err != nil {
-			common.SendFailResponse(c, http.StatusBadRequest, "jsonReq"+err.Error())
+			response.SendFailResponse(c, http.StatusBadRequest, "jsonReq"+err.Error())
 			return
 		}
 
 		user, err := repository.GetUserByMail(ctx, pool, loginRequest.Mail)
 		if err != nil {
-			common.SendFailResponse(c, http.StatusUnauthorized, "Something went wrong: "+err.Error())
+			response.SendFailResponse(c, http.StatusUnauthorized, "Something went wrong: "+err.Error())
 			return
 		}
 		err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(loginRequest.Password))
 		if err != nil {
-			common.SendFailResponse(c, http.StatusUnauthorized, "Invalid credentials")
+			response.SendFailResponse(c, http.StatusUnauthorized, "Invalid credentials")
 			return
 		}
 
@@ -104,7 +104,7 @@ func LoginHandler(pool *pgxpool.Pool, cfg *config.Config) gin.HandlerFunc {
 
 		accessTokenString, err := generateJWT(user.ID, tokenExp, cfg)
 		if err != nil {
-			common.SendFailResponse(c, http.StatusInternalServerError, "Failed to generate token: "+err.Error())
+			response.SendFailResponse(c, http.StatusInternalServerError, "Failed to generate token: "+err.Error())
 			return
 		}
 
@@ -115,7 +115,7 @@ func LoginHandler(pool *pgxpool.Pool, cfg *config.Config) gin.HandlerFunc {
 			Secure:   cfg.ProductionStatus,
 			SameSite: http.SameSiteLaxMode,
 		})
-		common.SendSuccessResponse(c, http.StatusOK, user)
+		response.SendSuccessResponse(c, http.StatusOK, user)
 	}
 }
 

@@ -1,8 +1,6 @@
-package common
+package response
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -26,7 +24,7 @@ type Meta struct {
 }
 
 func SendSuccessResponse(c *gin.Context, status int, data any) {
-	c.JSON(http.StatusOK, Response{
+	c.JSON(status, Response{
 		Success: true,
 		Data:    data,
 	})

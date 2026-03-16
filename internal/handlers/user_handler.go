@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"go-starter/internal/common"
+	"go-starter/internal/common/response"
 	"go-starter/internal/repository"
 	"net/http"
 
@@ -16,10 +16,10 @@ func GetUserHandler(pool *pgxpool.Pool) gin.HandlerFunc {
 
 		userData, err := repository.GetUserById(ctx, pool, userId)
 		if err != nil {
-			common.SendFailResponse(c, http.StatusUnauthorized, "Error while get user data: "+err.Error())
+			response.SendFailResponse(c, http.StatusUnauthorized, "Error while get user data: "+err.Error())
 			return
 		}
 
-		common.SendSuccessResponse(c, http.StatusOK, userData)
+		response.SendSuccessResponse(c, http.StatusOK, userData)
 	}
 }
