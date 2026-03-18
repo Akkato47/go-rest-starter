@@ -7,6 +7,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// getUserById godoc
+// @Summary      Get current user
+// @Tags         user
+// @Produce      json
+// @Security     CookieAuth
+// @Success      200  {object}  response.Response{data=domain.User}
+// @Failure      401  {object}  response.Response
+// @Failure      500  {object}  response.Response
+// @Router       /user/data [get]
 func (h *userHandler) getUserById(c *gin.Context) {
 	ctx := c.Request.Context()
 	userId := c.GetInt("user_id")

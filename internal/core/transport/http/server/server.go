@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 type Config struct {
@@ -53,6 +55,18 @@ func New(cfg Config, logger *slog.Logger, middleware ...gin.HandlerFunc) *Server
 
 	s.engine = engine
 	return s
+}
+
+func (s *Server) RegisterSwagger() {
+	handler := ginSwagger.WrapHandler(swaggerFiles.Handler, ginSwagger.URL("/swagger/doc.json"))
+
+	s.engine.GET("/swagger/*any", func(c *gin.Context) {
+		if c.Param("any") == "/" {
+			c.Redirect(http.StatusFound, "/swagger/index.html")
+			return
+		}
+		handler(c)
+	})
 }
 
 func (s *Server) RegisterGroups(groups ...*RouterGroup) {

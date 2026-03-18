@@ -1,3 +1,12 @@
+// @title          Go Starter API
+// @version        1.0
+// @description    Authentication and User management REST API
+// @host           localhost:8000
+// @BasePath       /
+//
+// @securityDefinitions.apikey  CookieAuth
+// @in                          cookie
+// @name                        access_token
 package main
 
 import (
@@ -18,6 +27,8 @@ import (
 	user_repository "go-starter/internal/features/user/repository"
 	user_services "go-starter/internal/features/user/services"
 	user_handlers "go-starter/internal/features/user/transport/http"
+
+	_ "go-starter/docs" // сгенерированная Swagger документация
 )
 
 func main() {
@@ -68,6 +79,7 @@ func main() {
 	userGroup.AddRoutes(userHandler.Routes()...)
 
 	srv.RegisterGroups(authGroup, userGroup)
+	srv.RegisterSwagger()
 
 	if err := srv.Run(rootCtx); err != nil {
 		logger.Error("server error", slog.String("error", err.Error()))

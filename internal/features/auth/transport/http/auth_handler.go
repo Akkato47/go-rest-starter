@@ -36,6 +36,17 @@ func (h *authHandler) Routes() []server.Route {
 	}
 }
 
+// register godoc
+// @Summary      Register new user
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request  body      RegisterRequest  true  "Registration data"
+// @Success      201      {object}  response.Response{data=domain.User}
+// @Failure      400      {object}  response.Response
+// @Failure      409      {object}  response.Response
+// @Failure      500      {object}  response.Response
+// @Router       /auth/register [post]
 func (h *authHandler) register(c *gin.Context) {
 	ctx := c.Request.Context()
 	var req RegisterRequest
@@ -62,6 +73,17 @@ func (h *authHandler) register(c *gin.Context) {
 	response.SendSuccessResponse(c, http.StatusCreated, createdUser)
 }
 
+// login godoc
+// @Summary      Login
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request  body      LoginRequest  true  "Login credentials"
+// @Success      200      {object}  response.Response{data=domain.User}
+// @Failure      400      {object}  response.Response
+// @Failure      401      {object}  response.Response
+// @Failure      500      {object}  response.Response
+// @Router       /auth/login [post]
 func (h *authHandler) login(c *gin.Context) {
 	ctx := c.Request.Context()
 	var req LoginRequest

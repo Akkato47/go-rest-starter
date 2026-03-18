@@ -9,3 +9,6 @@ migrate-up:
 
 migrate-down:
 	@migrate -path ./migrations -database "${POSTGRES_URL}?sslmode=disable" down
+
+swagger:
+	@swag init -g cmd/api/main.go -o docs
