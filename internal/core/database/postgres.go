@@ -3,7 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
-	"go-starter/internal/config"
+	"go-starter/internal/core/config"
 	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"

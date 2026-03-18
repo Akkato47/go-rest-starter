@@ -1,31 +1,25 @@
-package repository
+package user_repository
 
 import (
 	"context"
 	"fmt"
-	"go-starter/internal/model"
+	"go-starter/internal/core/domain"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type UserRepository interface {
-	CreateUser(ctx context.Context, user *model.User) (*model.User, error)
-	GetUserByMail(ctx context.Context, mail string) (*model.User, error)
-	GetUserById(ctx context.Context, id int) (*model.User, error)
-}
-
 type userRepo struct {
 	pool *pgxpool.Pool
 }
 
-func NewUserRepository(pool *pgxpool.Pool) UserRepository {
+func NewUserRepository(pool *pgxpool.Pool) *userRepo {
 	return &userRepo{
 		pool: pool,
 	}
 }
 
-func (r *userRepo) CreateUser(ctx context.Context, user *model.User) (*model.User, error) {
+func (r *userRepo) CreateUser(ctx context.Context, user *domain.User) (*domain.User, error) {
 	if user.Mail == "" {
 		return nil, fmt.Errorf("mail can not be empty")
 	}
@@ -36,7 +30,7 @@ func (r *userRepo) CreateUser(ctx context.Context, user *model.User) (*model.Use
 		RETURNING id, mail, created_at, updated_at;
 	`
 
-	var createdUser model.User
+	var createdUser domain.User
 
 	err := r.pool.QueryRow(ctx, query, user.Mail, user.Password).Scan(
 		&createdUser.ID,
@@ -60,14 +54,14 @@ func (r *userRepo) CreateUser(ctx context.Context, user *model.User) (*model.Use
 	return &createdUser, nil
 }
 
-func (r *userRepo) GetUserByMail(ctx context.Context, mail string) (*model.User, error) {
+func (r *userRepo) GetUserByMail(ctx context.Context, mail string) (*domain.User, error) {
 	query := `
 		SELECT id, mail, password
 		FROM users
 		WHERE mail = $1
 	`
 
-	var user model.User
+	var user domain.User
 
 	err := r.pool.QueryRow(ctx, query, mail).Scan(
 		&user.ID,
@@ -80,14 +74,14 @@ func (r *userRepo) GetUserByMail(ctx context.Context, mail string) (*model.User,
 	return &user, nil
 }
 
-func (r *userRepo) GetUserById(ctx context.Context, id int) (*model.User, error) {
+func (r *userRepo) GetUserById(ctx context.Context, id int) (*domain.User, error) {
 	query := `
 		SELECT id, mail, created_at
 		FROM users
 		WHERE id = $1
 	`
 
-	var user model.User
+	var user domain.User
 
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&user.ID,

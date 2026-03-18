@@ -1,35 +1,17 @@
-package services
+package auth_services
 
 import (
 	"context"
 	"fmt"
-	"go-starter/internal/config"
-	"go-starter/internal/model"
-	"go-starter/internal/repository"
+	"go-starter/internal/core/config"
+	"go-starter/internal/core/domain"
 	"time"
 
 	"github.com/golang-jwt/jwt"
 	"golang.org/x/crypto/bcrypt"
 )
 
-type AuthService interface {
-	Register(ctx context.Context, mail, password string) (*model.User, string, error)
-	Login(ctx context.Context, mail, password string) (*model.User, string, error)
-}
-
-type asvc struct {
-	repo repository.UserRepository
-	cfg  *config.Config
-}
-
-func NewAuthService(repo repository.UserRepository, cfg *config.Config) AuthService {
-	return &asvc{
-		repo: repo,
-		cfg:  cfg,
-	}
-}
-
-func (s *asvc) Register(ctx context.Context, mail, password string) (*model.User, string, error) {
+func (s *svc) Register(ctx context.Context, mail, password string) (*domain.User, string, error) {
 	if len(password) < 6 {
 		return nil, "", fmt.Errorf("Password must be at least 6 characters long")
 	}
@@ -38,7 +20,7 @@ func (s *asvc) Register(ctx context.Context, mail, password string) (*model.User
 		return nil, "", fmt.Errorf("Failed to hash password: %s", err.Error())
 	}
 
-	user := &model.User{
+	user := &domain.User{
 		Mail:     mail,
 		Password: string(hashedPassword),
 	}
@@ -58,7 +40,7 @@ func (s *asvc) Register(ctx context.Context, mail, password string) (*model.User
 	return createdUser, accessTokenString, nil
 }
 
-func (s *asvc) Login(ctx context.Context, mail, password string) (*model.User, string, error) {
+func (s *svc) Login(ctx context.Context, mail, password string) (*domain.User, string, error) {
 	user, err := s.repo.GetUserByMail(ctx, mail)
 	if err != nil {
 		return nil, "", fmt.Errorf("Something went wrong: %s", err.Error())

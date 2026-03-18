@@ -2,29 +2,23 @@ package main
 
 import (
 	"context"
-	"go-starter/internal/config"
-	"go-starter/internal/database"
-	"go-starter/internal/handlers"
-	"go-starter/internal/repository"
-	"go-starter/internal/services"
 	"log"
 	"log/slog"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
-	"sync/atomic"
 	"syscall"
 	"time"
-)
 
-const (
-	_shutdownPeriod      = 15 * time.Second
-	_shutdownHardPeriod  = 3 * time.Second
-	_readinessDrainDelay = 5 * time.Second
+	"go-starter/internal/core/config"
+	"go-starter/internal/core/database"
+	"go-starter/internal/core/transport/http/middleware"
+	"go-starter/internal/core/transport/http/server"
+	auth_services "go-starter/internal/features/auth/services"
+	auth_handlers "go-starter/internal/features/auth/transport/http"
+	user_repository "go-starter/internal/features/user/repository"
+	user_services "go-starter/internal/features/user/services"
+	user_handlers "go-starter/internal/features/user/transport/http"
 )
-
-var isShuttingDown atomic.Bool
 
 func main() {
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -46,53 +40,36 @@ func main() {
 	}
 	defer redisClient.Close()
 
-	userRepo := repository.NewUserRepository(pool)
+	// DI: Repository → Service → Handler
+	userRepo := user_repository.NewUserRepository(pool)
 
-	authService := services.NewAuthService(userRepo, cfg)
-	userService := services.NewUserService(userRepo)
-	
-	authHandlers := handlers.NewAuthHandler(authService, cfg)
-	userHandlers := handlers.NewUserHandler(userService)
+	authHandler := auth_handlers.NewAuthHandler(auth_services.NewAuthService(userRepo, cfg), cfg)
+	userHandler := user_handlers.NewUserHandler(user_services.NewUserService(userRepo))
 
-	handlers := SetupRouter(cfg, pool, redisClient, logger, authHandlers, userHandlers)
-
-	ongoingCtx, stopOngoingGracefully := context.WithCancel(context.Background())
-	srv := &http.Server{
-		Addr:         ":" + cfg.AppPort,
-		Handler:      handlers,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
-		BaseContext: func(_ net.Listener) context.Context {
-			return ongoingCtx
+	// Server
+	srv := server.New(
+		server.Config{
+			Port:            cfg.AppPort,
+			ShutdownTimeout: 15 * time.Second,
+			DrainDelay:      5 * time.Second,
+			HardStopDelay:   3 * time.Second,
 		},
+		logger,
+		middleware.Logger(logger),
+		middleware.CORS(cfg.AllowedOrigins),
+		middleware.SecurityHeaders(),
+	)
+
+	// Route groups
+	authGroup := server.NewRouterGroup("/auth", middleware.RateLimiter(redisClient))
+	authGroup.AddRoutes(authHandler.Routes()...)
+
+	userGroup := server.NewRouterGroup("/user", middleware.AuthMiddleware(cfg))
+	userGroup.AddRoutes(userHandler.Routes()...)
+
+	srv.RegisterGroups(authGroup, userGroup)
+
+	if err := srv.Run(rootCtx); err != nil {
+		logger.Error("server error", slog.String("error", err.Error()))
 	}
-
-	go func() {
-		logger.Info("Starting server")
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			panic(err)
-		}
-	}()
-
-	<-rootCtx.Done()
-	stop()
-	isShuttingDown.Store(true)
-	srv.SetKeepAlivesEnabled(false)
-	logger.Info("Received shutdown signal, gracefully shutting down...")
-
-	time.Sleep(_readinessDrainDelay)
-	logger.Info("Readiness check propagated, now waiting for ongoing request to finish...")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), _shutdownPeriod)
-	defer cancel()
-
-	err = srv.Shutdown(shutdownCtx)
-	stopOngoingGracefully()
-	if err != nil {
-		logger.Error("Failed to wait for ongoing requests to finish, waiting for forced cancellation...")
-		time.Sleep(_shutdownHardPeriod)
-	}
-	logger.Info("Server shut down gracefully")
-
 }

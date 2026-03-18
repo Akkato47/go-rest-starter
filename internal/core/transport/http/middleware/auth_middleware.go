@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"fmt"
-	"go-starter/internal/config"
+	"go-starter/internal/core/config"
 	"net/http"
 	"strconv"
 	"time"

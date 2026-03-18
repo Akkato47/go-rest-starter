@@ -1,6 +1,6 @@
 package config
 
-import "go-starter/internal/common/env"
+import "go-starter/internal/core/common/env"
 
 type Config struct {
 	DbUrl            string
