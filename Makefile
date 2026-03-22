@@ -12,3 +12,9 @@ migrate-down:
 
 swagger:
 	@swag init -g cmd/api/main.go -o docs
+
+test:
+	@go test ./tests/...
+
+test-v:
+	@go test -v ./tests/...
